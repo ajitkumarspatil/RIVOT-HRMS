@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* Light Theme Overrides */
+html.light-mode {
+  color-scheme: light;
+}
+
+html.light-mode body {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+html.light-mode .bg-\[\#0B0D11\] {
+  background-color: #F1F5F9 !important;
+}
+
+html.light-mode .bg-\[\#12161E\] {
+  background-color: #FFFFFF !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+html.light-mode .bg-\[\#181D27\] {
+  background-color: #F8FAFC !important;
+}
+
+html.light-mode .bg-\[\#202734\] {
+  background-color: #E2E8F0 !important;
+}
+
+html.light-mode .border-\[\#262D3D\] {
+  border-color: #E2E8F0 !important;
+}
+
+html.light-mode .text-white {
+  color: #0F172A !important;
+}
+
+html.light-mode .text-gray-100 {
+  color: #0F172A !important;
+}
+
+html.light-mode .text-gray-200 {
+  color: #1E293B !important;
+}
+
+html.light-mode .text-gray-300 {
+  color: #334155 !important;
+}
+
+html.light-mode .text-gray-400 {
+  color: #64748B !important;
+}
+
+html.light-mode .text-gray-500 {
+  color: #64748B !important;
+}
+
+html.light-mode input,
+html.light-mode select,
+html.light-mode textarea {
+  color: #0F172A !important;
+}
+
+html.light-mode input::placeholder,
+html.light-mode textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+html.light-mode table thead tr {
+  background-color: #F1F5F9 !important;
+}
+
+html.light-mode table thead th {
+  color: #475569 !important;
+}
+
+html.light-mode table tbody tr:hover {
+  background-color: #F8FAFC !important;
+}
+
+html.light-mode .divide-\[\#262D3D\] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #E2E8F0 !important;
+}
+

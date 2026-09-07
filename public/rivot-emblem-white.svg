@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 200" width="100%" height="100%" fill="none">
+  <g id="rivot-official-logo" fill="#FFFFFF">
+    
+    <!-- RIVOT Official Circular Emblem -->
+    <g id="rivot-emblem">
+      <!-- Outer Ring -->
+      <circle cx="100" cy="100" r="72" stroke="#FFFFFF" stroke-width="8.5" fill="none" />
+      
+      <!-- Upper Aerodynamic Wing -->
+      <path d="M 44 64 C 66 73, 84 82, 100 82 C 116 82, 134 73, 156 64 C 160 67, 161 74, 156 79 C 137 87, 118 95, 100 95 C 82 95, 63 87, 44 79 C 39 74, 40 67, 44 64 Z" />
+      
+      <!-- Lower Aerodynamic Wing (Mirrored) -->
+      <path d="M 44 121 C 63 113, 82 105, 100 105 C 118 105, 137 113, 156 121 C 161 126, 160 133, 156 136 C 134 127, 116 118, 100 118 C 84 118, 66 127, 44 136 C 40 133, 39 126, 44 121 Z" />
+    </g>
+
+    
+  </g>
+</svg>

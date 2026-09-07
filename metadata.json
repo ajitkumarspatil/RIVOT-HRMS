@@ -1,0 +1,6 @@
+{
+  "name": "RIVOT HRMS & Payroll System",
+  "description": "Automated Indian Payroll & Attendance System for RIVOT Motors with biometric CSV parsing, leave & LOP calculations, statutory compliance (PF, ESI, PT), employee self-service onboarding, and payslip generation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
