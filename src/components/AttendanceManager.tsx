@@ -77,6 +77,7 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
   const [newInTime, setNewInTime] = useState<string>('09:15');
   const [newOutTime, setNewOutTime] = useState<string>('18:30');
   const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string | null>(null);
+  const [isConfirmClearOpen, setIsConfirmClearOpen] = useState<boolean>(false);
 
   // Dominant month detected in current raw biometric punches
   const punchFileMonth = useMemo(() => {
@@ -122,7 +123,7 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
     const maxDate = dates[dates.length - 1];
 
     setUploadSuccessMessage(
-      `Successfully loaded "${fileName}": Detected ${targetMonth} from 2nd column date timestamps! Uploaded ${rawPunches.length.toLocaleString('en-IN')} punches across ${uniqueRawEmpIds.size} employees (${minDate} to ${maxDate}). Active payroll month set to ${targetMonth}.`
+      `Latest Biometric File Overwritten & Applied: "${fileName}" for ${targetMonth} loaded (${rawPunches.length.toLocaleString('en-IN')} punches across ${uniqueRawEmpIds.size} employees, ${minDate} to ${maxDate}). Any prior punch data for ${targetMonth} has been cleanly replaced.`
     );
     setTimeout(() => setUploadSuccessMessage(null), 10000);
   };
@@ -172,6 +173,9 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
       }
     };
     reader.readAsText(file);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   // Download Sample CSV
@@ -210,6 +214,18 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
   const lopCount = attendanceRecords.filter(r => r.status === 'ABSENT_LOP').length;
   const lostWeeklyOffs = attendanceRecords.filter(r => r.status === 'WEEKLY_OFF_LOST').length;
   const seniorPunches = attendanceRecords.filter(r => r.isSeniorExempt && r.status === 'PRESENT').length;
+
+  const handleExecuteCleanRecords = () => {
+    onClearAttendance();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setSelectedEmpFilter('ALL');
+    setSelectedStatusFilter('ALL');
+    setIsConfirmClearOpen(false);
+    setUploadSuccessMessage(`All biometric attendance records for ${currentMonth} have been successfully cleared. Upload a fresh punch CSV anytime.`);
+    setTimeout(() => setUploadSuccessMessage(null), 8000);
+  };
 
   const handleOpenEdit = (rec: DailyAttendanceRecord) => {
     setEditingRecord(rec);
@@ -349,7 +365,7 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
 
             {attendanceRecords.length > 0 && (
               <button
-                onClick={onClearAttendance}
+                onClick={() => setIsConfirmClearOpen(true)}
                 className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all"
                 title="Clear all parsed biometric attendance records to test fresh upload"
               >
@@ -770,6 +786,46 @@ export const AttendanceManager: React.FC<AttendanceManagerProps> = ({
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>Save Override</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Clean All Records */}
+      {isConfirmClearOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12161E] border border-rose-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Clean All Records for {currentMonth}?</h3>
+                <p className="text-xs text-gray-400">Reset biometric punch data & attendance matrix</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-300 leading-relaxed bg-[#181D27] p-3.5 rounded-xl border border-[#262D3D]">
+              This will clear all <strong className="text-white">{attendanceRecords.length}</strong> attendance records and raw punch timestamps for <strong className="text-rose-400">{currentMonth}</strong>. 
+              This allows you to re-upload a fresh or updated biometric CSV without conflicts.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmClearOpen(false)}
+                className="px-4 py-2 bg-[#181D27] hover:bg-[#202734] text-gray-300 text-xs font-semibold rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteCleanRecords}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-rose-600/20"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Yes, Clean All Records</span>
               </button>
             </div>
           </div>

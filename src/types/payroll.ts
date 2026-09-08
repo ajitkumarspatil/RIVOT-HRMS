@@ -48,6 +48,9 @@ export interface EmploymentDetails {
   isEsiEligible?: boolean;
   isPtEligible?: boolean;
   stipendAmount?: number; // for interns
+  resignationDate?: string; // YYYY-MM-DD
+  lastWorkingDate?: string; // YYYY-MM-DD
+  resignationRemarks?: string;
 }
 
 export interface LeaveBalance {
@@ -61,11 +64,12 @@ export interface Employee {
   id: string;
   empCode: string;
   email: string;
+  password?: string;
   tempPassword?: string;
   isTempPasswordReset: boolean;
   isProfileCompleted: boolean;
   onboardingToken?: string;
-  status: 'ACTIVE' | 'ONBOARDING' | 'EXITED';
+  status: 'ACTIVE' | 'ONBOARDING' | 'EXITED' | 'RESIGNED';
   personalDetails: PersonalDetails;
   identityDetails: IdentityDetails;
   bankDetails: BankDetails;

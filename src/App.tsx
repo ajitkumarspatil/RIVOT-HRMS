@@ -38,6 +38,11 @@ import { AdminCompanySettings } from './components/AdminCompanySettings';
 import { EmployeePortalView } from './components/EmployeePortalView';
 import { UbuntuDeployModal } from './components/UbuntuDeployModal';
 import { LogoAssetsModal } from './components/LogoAssetsModal';
+import { CandidateOnboardingView } from './components/CandidateOnboardingView';
+import { EmployeeLoginModal } from './components/EmployeeLoginModal';
+import { LoginScreen } from './components/LoginScreen';
+import { StaffCredentialsModal } from './components/StaffCredentialsModal';
+import { DEFAULT_STAFF_PASSWORD } from './utils/authConfig';
 
 import { 
   FileSpreadsheet, 
@@ -53,6 +58,11 @@ import {
   Building2
 } from 'lucide-react';
 
+interface AuthSession {
+  role: 'ADMIN' | 'EMPLOYEE';
+  empId?: string;
+}
+
 export default function App() {
   const { theme, toggleTheme } = useTheme();
   const [currentMonth, setCurrentMonth] = useState<string>('2026-07');
@@ -61,9 +71,21 @@ export default function App() {
     'PAYROLL' | 'ATTENDANCE' | 'ANALYTICS' | 'LEAVES' | 'REGULARIZATION' | 'EMPLOYEES' | 'ADJUSTMENTS' | 'HOLIDAYS' | 'COMPANY_SETTINGS'
   >('ATTENDANCE');
 
+  // Production Authentication Session State
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
+    try {
+      const saved = localStorage.getItem('rivot_auth_session');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+
   // Modals state
   const [isDeployModalOpen, setIsDeployModalOpen] = useState<boolean>(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState<boolean>(false);
+  const [candidateOnboardEmp, setCandidateOnboardEmp] = useState<Employee | null>(null);
 
   // Company Master & Statutory Settings State
   const [companyMaster, setCompanyMaster] = useState<CompanyMaster>(() => {
@@ -86,8 +108,27 @@ export default function App() {
   });
 
   // Core Data Collections
-  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
-  const [activeEmpId, setActiveEmpId] = useState<string>(INITIAL_EMPLOYEES[0]?.id || '');
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    try {
+      const saved = localStorage.getItem('rivot_employees');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_EMPLOYEES;
+  });
+
+  // Persist employees whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem('rivot_employees', JSON.stringify(employees));
+    } catch {}
+  }, [employees]);
+
+  const [activeEmpId, setActiveEmpId] = useState<string>(() => {
+    return authSession?.empId || INITIAL_EMPLOYEES[0]?.id || '';
+  });
   const [approvedLeaves, setApprovedLeaves] = useState<LeaveApplication[]>(INITIAL_LEAVE_APPLICATIONS);
   const [missingPunchRequests, setMissingPunchRequests] = useState<MissingPunchRequest[]>(INITIAL_MISSING_PUNCH_REQUESTS);
   const [adjustments, setAdjustments] = useState<Record<string, EmployeeAdjustment>>(INITIAL_ADJUSTMENTS);
@@ -144,6 +185,18 @@ export default function App() {
     );
     setAttendanceRecords(processed);
   }, []);
+
+  // Check URL query parameters for onboarding token / link
+  useEffect(() => {
+    try {
+      const search = window.location.search;
+      const hash = window.location.hash;
+      if (search.includes('onboard') || search.includes('token') || hash.includes('onboard')) {
+        const pending = employees.find(e => e.status === 'ONBOARDING') || employees[0];
+        if (pending) setCandidateOnboardEmp(pending);
+      }
+    } catch {}
+  }, [employees]);
 
   const handleMonthChange = (newMonth: string) => {
     setCurrentMonth(newMonth);
@@ -254,19 +307,32 @@ export default function App() {
 
   // Calculate Monthly Payroll Records
   const payrollRecords: MonthlyPayrollRecord[] = useMemo(() => {
-    return employees.map(emp => {
-      const stats = attendanceStatsByEmp[emp.id] || {
-        totalMonthDays: 31,
-        totalPresentDays: 26,
-        totalHalfDays: 0,
-        totalWeeklyOffDays: 4,
-        totalApprovedLeaveDays: 1,
-        totalLOPDays: 0,
-        paidDays: 31
-      };
-      const adj = adjustments[`${emp.id}_${currentMonth}`];
-      return calculateMonthlyPayroll(emp, currentMonth, stats, adj);
-    });
+    return employees
+      .filter(emp => {
+        // Exclude resigned or exited employees from monthly payroll calculation
+        if (emp.status === 'RESIGNED' || emp.status === 'EXITED') {
+          if (emp.employmentDetails?.lastWorkingDate) {
+            const lwdMonth = emp.employmentDetails.lastWorkingDate.substring(0, 7);
+            if (lwdMonth < currentMonth) return false;
+          } else {
+            return false;
+          }
+        }
+        return true;
+      })
+      .map(emp => {
+        const stats = attendanceStatsByEmp[emp.id] || {
+          totalMonthDays: 31,
+          totalPresentDays: 26,
+          totalHalfDays: 0,
+          totalWeeklyOffDays: 4,
+          totalApprovedLeaveDays: 1,
+          totalLOPDays: 0,
+          paidDays: 31
+        };
+        const adj = adjustments[`${emp.id}_${currentMonth}`];
+        return calculateMonthlyPayroll(emp, currentMonth, stats, adj);
+      });
   }, [employees, currentMonth, attendanceStatsByEmp, adjustments]);
 
   // Compute Payroll Summary KPIs
@@ -494,6 +560,81 @@ export default function App() {
     setEmployees(prev => prev.map(emp => emp.id === empId ? { ...emp, ...updated } : emp));
   };
 
+  const handleDeleteEmployee = (empId: string) => {
+    setEmployees(prev => {
+      const filtered = prev.filter(emp => emp.id !== empId);
+      try {
+        localStorage.setItem('rivot_employees', JSON.stringify(filtered));
+      } catch {}
+      return filtered;
+    });
+    if (activeEmpId === empId) {
+      const remaining = employees.filter(emp => emp.id !== empId);
+      if (remaining.length > 0) {
+        setActiveEmpId(remaining[0].id);
+      }
+    }
+  };
+
+  const handleCompleteCandidateOnboarding = (empId: string, completedData: Partial<Employee>) => {
+    setEmployees(prev => prev.map(e => e.id === empId ? { 
+      ...e, 
+      ...completedData, 
+      status: 'ACTIVE', 
+      isProfileCompleted: true,
+      isTempPasswordReset: true 
+    } : e));
+    setCandidateOnboardEmp(null);
+    setActiveEmpId(empId);
+    setActiveRole('EMPLOYEE');
+  };
+
+  const handleEmployeeLoginSuccess = (empId: string) => {
+    setActiveEmpId(empId);
+    setActiveRole('EMPLOYEE');
+    setIsLoginModalOpen(false);
+  };
+
+  const handleAdminLogin = () => {
+    const session: AuthSession = { role: 'ADMIN' };
+    setAuthSession(session);
+    setActiveRole('ADMIN');
+    try {
+      localStorage.setItem('rivot_auth_session', JSON.stringify(session));
+    } catch {}
+  };
+
+  const handleEmployeeLogin = (empId: string) => {
+    const session: AuthSession = { role: 'EMPLOYEE', empId };
+    setAuthSession(session);
+    setActiveRole('EMPLOYEE');
+    setActiveEmpId(empId);
+    try {
+      localStorage.setItem('rivot_auth_session', JSON.stringify(session));
+    } catch {}
+  };
+
+  const handleLogout = () => {
+    setAuthSession(null);
+    try {
+      localStorage.removeItem('rivot_auth_session');
+    } catch {}
+  };
+
+  const handleResetEmployeePassword = (empId: string) => {
+    setEmployees(prev => prev.map(e => {
+      if (e.id === empId) {
+        return {
+          ...e,
+          password: DEFAULT_STAFF_PASSWORD,
+          tempPassword: DEFAULT_STAFF_PASSWORD,
+          isTempPasswordReset: false
+        };
+      }
+      return e;
+    }));
+  };
+
   // Handlers for Pre-Payroll Adjustments
   const handleAddAdjustment = (empId: string, type: 'reimbursement' | 'deduction', item: Omit<AdjustmentItem, 'id'>) => {
     const key = `${empId}_${currentMonth}`;
@@ -656,6 +797,49 @@ export default function App() {
 
   const currentEmployee = employees.find(e => e.id === activeEmpId) || employees[0];
 
+  // If candidate is onboarding through direct link or preview
+  if (candidateOnboardEmp) {
+    return (
+      <div className="min-h-screen bg-[#0B0D11] text-gray-100 flex flex-col font-sans">
+        <CandidateOnboardingView
+          employee={candidateOnboardEmp}
+          onCompleteOnboarding={handleCompleteCandidateOnboarding}
+          onCancel={() => setCandidateOnboardEmp(null)}
+        />
+      </div>
+    );
+  }
+
+  // Production Authentication Screen (Admin & Staff Portal Access)
+  if (!authSession) {
+    return (
+      <div className="min-h-screen bg-[#0B0D11] text-gray-100 flex flex-col font-sans">
+        <LoginScreen
+          employees={employees}
+          onAdminLogin={handleAdminLogin}
+          onEmployeeLogin={handleEmployeeLogin}
+          onOpenCandidateOnboard={(emp) => {
+            if (emp) setCandidateOnboardEmp(emp);
+          }}
+        />
+      </div>
+    );
+  }
+
+  const handleRoleChange = (role: 'ADMIN' | 'EMPLOYEE') => {
+    if (role === 'ADMIN' && authSession?.role !== 'ADMIN') {
+      return; // Regular staff cannot switch to Admin
+    }
+    setActiveRole(role);
+  };
+
+  const handleSelectEmployee = (empId: string) => {
+    if (authSession?.role !== 'ADMIN') return; // Regular staff cannot switch to other employees
+    setActiveEmpId(empId);
+  };
+
+  const isAdminSession = authSession?.role === 'ADMIN';
+
   return (
     <div className="min-h-screen bg-[#0B0D11] text-gray-100 flex flex-col font-sans selection:bg-[#FF5E0E]/30 selection:text-white transition-colors">
       
@@ -664,9 +848,12 @@ export default function App() {
         currentMonth={currentMonth}
         onMonthChange={handleMonthChange}
         activeRole={activeRole}
-        onRoleChange={setActiveRole}
+        onRoleChange={handleRoleChange}
         onOpenDeployModal={() => setIsDeployModalOpen(true)}
         onOpenLogoModal={() => setIsLogoModalOpen(true)}
+        onOpenLoginModal={() => setIsLoginModalOpen(true)}
+        onOpenCredentialsModal={() => setIsCredentialsModalOpen(true)}
+        onLogout={handleLogout}
         payrollRecords={payrollRecords}
         onBatchPayslips={() => {
           payrollRecords.forEach((r, idx) => {
@@ -674,7 +861,7 @@ export default function App() {
           });
         }}
         selectedEmpId={activeEmpId}
-        onSelectEmployee={setActiveEmpId}
+        onSelectEmployee={handleSelectEmployee}
         employees={employees.map(e => ({
           id: e.id,
           name: `${e.personalDetails.firstName} ${e.personalDetails.lastName}`.trim() || e.email,
@@ -683,6 +870,7 @@ export default function App() {
         companyMaster={companyMaster}
         theme={theme}
         onToggleTheme={toggleTheme}
+        isAdminSession={isAdminSession}
       />
 
       {/* Main Container */}
@@ -886,6 +1074,9 @@ export default function App() {
                 employees={employees}
                 onInviteEmployee={handleInviteEmployee}
                 onUpdateEmployeeDetails={handleUpdateEmployeeDetails}
+                onDeleteEmployee={handleDeleteEmployee}
+                onOpenCandidateOnboard={(emp) => setCandidateOnboardEmp(emp)}
+                onOpenCredentialsModal={() => setIsCredentialsModalOpen(true)}
               />
             )}
 
@@ -926,7 +1117,7 @@ export default function App() {
             currentMonth={currentMonth}
             currentEmployee={currentEmployee}
             allEmployees={employees}
-            onSwitchEmployee={setActiveEmpId}
+            onSwitchEmployee={handleSelectEmployee}
             payrollRecords={payrollRecords}
             attendanceRecords={attendanceRecords}
             onUpdatePersonalDetails={handleUpdateEmployeeDetails}
@@ -937,6 +1128,7 @@ export default function App() {
             holidays={holidays}
             employeeRestrictedHolidays={employeeRestrictedHolidays}
             onUpdateEmployeeRestrictedHolidays={handleUpdateEmployeeRestrictedHolidays}
+            isAdminSession={isAdminSession}
           />
         )}
 
@@ -964,6 +1156,27 @@ export default function App() {
       <LogoAssetsModal
         isOpen={isLogoModalOpen}
         onClose={() => setIsLogoModalOpen(false)}
+      />
+
+      {/* Employee Self-Service Login Modal */}
+      <EmployeeLoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        employees={employees}
+        onLoginSuccess={handleEmployeeLoginSuccess}
+        onOpenOnboardToken={() => {
+          setIsLoginModalOpen(false);
+          const pending = employees.find(e => e.status === 'ONBOARDING') || employees[0];
+          if (pending) setCandidateOnboardEmp(pending);
+        }}
+      />
+
+      {/* Staff Login Credentials & Password Management Modal (Admin) */}
+      <StaffCredentialsModal
+        isOpen={isCredentialsModalOpen}
+        onClose={() => setIsCredentialsModalOpen(false)}
+        employees={employees}
+        onResetEmployeePassword={handleResetEmployeePassword}
       />
 
     </div>

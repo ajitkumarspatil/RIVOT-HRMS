@@ -16,7 +16,11 @@ import {
   CreditCard,
   CheckCircle2,
   Eye,
-  X
+  X,
+  Lock,
+  Unlock,
+  FileCheck,
+  AlertCircle
 } from 'lucide-react';
 
 interface PayrollDashboardProps {
@@ -39,6 +43,53 @@ export const PayrollDashboard: React.FC<PayrollDashboardProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<MonthlyPayrollRecord | null>(null);
+  const [isConfirmFinalizeOpen, setIsConfirmFinalizeOpen] = useState<boolean>(false);
+
+  // Draft vs Finalized Status per Month
+  const [draftStatuses, setDraftStatuses] = useState<Record<string, { status: 'DRAFT' | 'FINALIZED'; finalizedAt?: string; finalizedBy?: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('rivot_payroll_draft_statuses');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const currentStatus = draftStatuses[currentMonth]?.status || 'DRAFT';
+  const currentMeta = draftStatuses[currentMonth];
+
+  const handleFinalizePayroll = () => {
+    const updated = {
+      ...draftStatuses,
+      [currentMonth]: {
+        status: 'FINALIZED' as const,
+        finalizedAt: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+        finalizedBy: 'HR Admin'
+      }
+    };
+    setDraftStatuses(updated);
+    try {
+      localStorage.setItem('rivot_payroll_draft_statuses', JSON.stringify(updated));
+    } catch {}
+    setIsConfirmFinalizeOpen(false);
+    setExportNotice(`Payroll Register for ${currentMonth} has been finalized and locked for salary disbursal!`);
+    setTimeout(() => setExportNotice(null), 6000);
+  };
+
+  const handleReopenDraft = () => {
+    const updated = {
+      ...draftStatuses,
+      [currentMonth]: {
+        status: 'DRAFT' as const
+      }
+    };
+    setDraftStatuses(updated);
+    try {
+      localStorage.setItem('rivot_payroll_draft_statuses', JSON.stringify(updated));
+    } catch {}
+    setExportNotice(`Payroll Register for ${currentMonth} has been reopened as Draft for verification and adjustments.`);
+    setTimeout(() => setExportNotice(null), 6000);
+  };
 
   const filteredRecords = payrollRecords.filter(r => 
     r.empName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -70,33 +121,80 @@ export const PayrollDashboard: React.FC<PayrollDashboardProps> = ({
         <div className="absolute top-0 right-0 w-80 h-80 bg-[#FF5E0E]/5 rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-[#FF5E0E]/20 text-[#FF5E0E] text-xs font-bold uppercase tracking-wider">
                 Statutory Payroll Calculation Engine
               </span>
+              
+              {/* Draft vs Finalized Badge */}
+              {currentStatus === 'DRAFT' ? (
+                <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold font-mono">
+                  <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>DRAFT REGISTER (Verification Mode)</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold font-mono">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>FINALIZED & LOCKED</span>
+                </span>
+              )}
+
               <span className="text-xs text-gray-400">
                 EPF • ESIC • PT (Karnataka) • Bank NEFT
               </span>
             </div>
+
             <h2 className="text-xl font-bold text-white">
               RIVOT Monthly Payroll & Statutory Compliance ({currentMonth})
             </h2>
             <p className="text-xs text-gray-300 max-w-2xl leading-relaxed">
-              Automated salary computation applying pro-rata paid days, biometric shift penalties, senior exemptions, 
-              statutory deductions (PF 12%, ESI 0.75%, PT ₹200), and discretionary adjustments.
+              {currentStatus === 'DRAFT' ? (
+                <>
+                  <strong className="text-amber-300">Draft Verification Mode:</strong> Review calculated paid days, biometric shifts, and discretionary reimbursements. Once reviewed and verified, click <strong className="text-emerald-400">Finalize Payroll Register</strong> to freeze numbers and release bank NEFT sheets.
+                </>
+              ) : (
+                <>
+                  <strong className="text-emerald-400">Locked for Disbursal:</strong> Finalized on {currentMeta?.finalizedAt || 'recently'} by {currentMeta?.finalizedBy || 'HR Admin'}. Figures are locked for bank disbursal and statutory PF/ESIC returns.
+                </>
+              )}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={onRecalculatePayroll}
-              className="flex items-center gap-2 bg-[#181D27] hover:bg-[#202734] border border-[#262D3D] hover:border-[#FF5E0E]/50 text-gray-200 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all"
-              title="Refresh and recalculate attendance & adjustments"
-            >
-              <Calculator className="w-4 h-4 text-[#FF5E0E]" />
-              <span>Recalculate</span>
-            </button>
+            {/* If Draft, give option to Recalculate / Refresh Draft */}
+            {currentStatus === 'DRAFT' ? (
+              <>
+                <button
+                  onClick={onRecalculatePayroll}
+                  className="flex items-center gap-2 bg-[#181D27] hover:bg-[#202734] border border-[#262D3D] hover:border-[#FF5E0E]/50 text-gray-200 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all"
+                  title="Recalculate and update draft with latest attendance punches & adjustments"
+                >
+                  <Calculator className="w-4 h-4 text-[#FF5E0E]" />
+                  <span>Refresh Draft</span>
+                </button>
+
+                <button
+                  onClick={() => setIsConfirmFinalizeOpen(true)}
+                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-lg shadow-emerald-600/20"
+                  title="Verify all values and finalize the monthly payroll register"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Finalize Payroll Register</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={handleReopenDraft}
+                  className="flex items-center gap-2 bg-[#181D27] hover:bg-[#202734] border border-amber-500/40 text-amber-300 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all"
+                  title="Unlock and reopen this month's register for adjustments"
+                >
+                  <Unlock className="w-4 h-4 text-amber-400" />
+                  <span>Reopen as Draft</span>
+                </button>
+              </>
+            )}
 
             <button
               onClick={handleExportExcel}
@@ -495,6 +593,64 @@ export const PayrollDashboard: React.FC<PayrollDashboardProps> = ({
               </p>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Finalize Payroll Register */}
+      {isConfirmFinalizeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#12161E] border border-[#262D3D] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-6 space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                <FileCheck className="w-6 h-6" />
+              </div>
+
+              <div>
+                <h3 className="text-lg font-bold text-white">Finalize Payroll Register ({currentMonth})?</h3>
+                <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                  You are about to finalize and lock the monthly payroll register. 
+                  This will verify that all biometric attendance punches, paid days, leaves, and salary adjustments have been audited.
+                </p>
+              </div>
+
+              <div className="bg-[#181D27] p-3 rounded-xl border border-[#262D3D] space-y-1 text-xs">
+                <div className="flex justify-between text-gray-300">
+                  <span>Total Employees:</span>
+                  <span className="font-bold text-white font-mono">{payrollRecords.length} Staff</span>
+                </div>
+                <div className="flex justify-between text-gray-300">
+                  <span>Total Net Disbursal:</span>
+                  <span className="font-bold text-emerald-400 font-mono">₹ {payrollSummary.totalNetSalary.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between text-gray-300">
+                  <span>Total Statutory Remittance:</span>
+                  <span className="font-bold text-rose-400 font-mono">₹ {(payrollSummary.totalEpfEmployer + payrollSummary.totalEsiEmployer + payrollSummary.totalPt).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-gray-400">
+                You can always reopen the register as Draft later if any last-minute adjustments or arrears are needed.
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmFinalizeOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs text-gray-300 hover:text-white bg-[#181D27] border border-[#262D3D] font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFinalizePayroll}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs text-white bg-emerald-600 hover:bg-emerald-500 font-bold shadow-lg shadow-emerald-600/20"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Confirm & Lock Register</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

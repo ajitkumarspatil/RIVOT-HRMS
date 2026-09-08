@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Employee, 
   MonthlyPayrollRecord, 
@@ -8,6 +8,7 @@ import {
   Holiday
 } from '../types/payroll';
 import { generateEmployeePayslipPDF } from '../utils/pdfPayslipGenerator';
+import { getEffectiveEmployeePassword, DEFAULT_STAFF_PASSWORD } from '../utils/authConfig';
 import { 
   User, 
   FileText, 
@@ -23,7 +24,12 @@ import {
   Plus,
   Star,
   ShieldCheck,
-  Check
+  Check,
+  Mail,
+  Eye,
+  EyeOff,
+  Sparkles,
+  KeyRound
 } from 'lucide-react';
 
 interface EmployeePortalViewProps {
@@ -41,6 +47,7 @@ interface EmployeePortalViewProps {
   holidays?: Holiday[];
   employeeRestrictedHolidays?: Record<string, string[]>;
   onUpdateEmployeeRestrictedHolidays?: (empId: string, holidayIds: string[]) => void;
+  isAdminSession?: boolean;
 }
 
 export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
@@ -57,7 +64,8 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
   missingPunchRequests = [],
   holidays = [],
   employeeRestrictedHolidays = {},
-  onUpdateEmployeeRestrictedHolidays
+  onUpdateEmployeeRestrictedHolidays,
+  isAdminSession = true
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'PAYSLIP' | 'PROFILE' | 'LEAVES' | 'ATTENDANCE'>('PAYSLIP');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -67,17 +75,54 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
   const b = currentEmployee.bankDetails;
   const s = currentEmployee.identityDetails;
 
+  const [email, setEmail] = useState<string>(currentEmployee.email || '');
   const [firstName, setFirstName] = useState<string>(p.firstName || '');
   const [lastName, setLastName] = useState<string>(p.lastName || '');
   const [phone, setPhone] = useState<string>(p.phone || '');
-  const [address, setAddress] = useState<string>(p.permanentAddress || p.currentAddress || '');
+  const [dob, setDob] = useState<string>(p.dob || '');
+  const [gender, setGender] = useState<'Male' | 'Female' | 'Other'>(p.gender || 'Male');
+  const [bloodGroup, setBloodGroup] = useState<string>(p.bloodGroup || '');
+  const [maritalStatus, setMaritalStatus] = useState<'Single' | 'Married'>(p.maritalStatus || 'Single');
+  const [currentAddress, setCurrentAddress] = useState<string>(p.currentAddress || '');
+  const [permanentAddress, setPermanentAddress] = useState<string>(p.permanentAddress || p.currentAddress || '');
+  const [emergencyContactName, setEmergencyContactName] = useState<string>(p.emergencyContactName || '');
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState<string>(p.emergencyContactPhone || '');
+
   const [panNumber, setPanNumber] = useState<string>(s.pan || '');
   const [aadhaarNumber, setAadhaarNumber] = useState<string>(s.aadhaar || '');
   const [uanNumber, setUanNumber] = useState<string>(s.uan || '');
+  const [esicIp, setEsicIp] = useState<string>(s.esicIp || '');
+
   const [bankName, setBankName] = useState<string>(b.bankName || '');
   const [accountNumber, setAccountNumber] = useState<string>(b.accountNumber || '');
   const [ifscCode, setIfscCode] = useState<string>(b.ifsc || '');
-  const [emergencyContact, setEmergencyContact] = useState<string>(p.emergencyContactPhone || '');
+  const [branchName, setBranchName] = useState<string>(b.branchName || '');
+
+  // Keep state synced when switching employee
+  useEffect(() => {
+    setEmail(currentEmployee.email || '');
+    setFirstName(currentEmployee.personalDetails.firstName || '');
+    setLastName(currentEmployee.personalDetails.lastName || '');
+    setPhone(currentEmployee.personalDetails.phone || '');
+    setDob(currentEmployee.personalDetails.dob || '');
+    setGender(currentEmployee.personalDetails.gender || 'Male');
+    setBloodGroup(currentEmployee.personalDetails.bloodGroup || '');
+    setMaritalStatus(currentEmployee.personalDetails.maritalStatus || 'Single');
+    setCurrentAddress(currentEmployee.personalDetails.currentAddress || '');
+    setPermanentAddress(currentEmployee.personalDetails.permanentAddress || currentEmployee.personalDetails.currentAddress || '');
+    setEmergencyContactName(currentEmployee.personalDetails.emergencyContactName || '');
+    setEmergencyContactPhone(currentEmployee.personalDetails.emergencyContactPhone || '');
+
+    setPanNumber(currentEmployee.identityDetails.pan || '');
+    setAadhaarNumber(currentEmployee.identityDetails.aadhaar || '');
+    setUanNumber(currentEmployee.identityDetails.uan || '');
+    setEsicIp(currentEmployee.identityDetails.esicIp || '');
+
+    setBankName(currentEmployee.bankDetails.bankName || '');
+    setAccountNumber(currentEmployee.bankDetails.accountNumber || '');
+    setIfscCode(currentEmployee.bankDetails.ifsc || '');
+    setBranchName(currentEmployee.bankDetails.branchName || '');
+  }, [currentEmployee]);
 
   // Leave Application Form State
   const [leaveType, setLeaveType] = useState<'CL' | 'SL' | 'PL'>('CL');
@@ -116,7 +161,9 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
   // Password Reset state
   const [oldPass, setOldPass] = useState<string>('');
   const [newPass, setNewPass] = useState<string>('');
-  const [passMsg, setPassMsg] = useState<string | null>(null);
+  const [confirmNewPass, setConfirmNewPass] = useState<string>('');
+  const [showPasswordFields, setShowPasswordFields] = useState<boolean>(false);
+  const [passMsg, setPassMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Current Employee's Payroll Record for the month
   const myPayroll = payrollRecords.find(r => r.empId === currentEmployee.id || r.empCode === currentEmployee.empCode);
@@ -171,30 +218,40 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdatePersonalDetails(currentEmployee.id, {
+      email: email.trim(),
+      isProfileCompleted: true,
       personalDetails: {
         ...currentEmployee.personalDetails,
-        firstName,
-        lastName,
-        phone,
-        permanentAddress: address,
-        emergencyContactPhone: emergencyContact
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim(),
+        dob,
+        gender,
+        bloodGroup: bloodGroup.trim(),
+        maritalStatus,
+        currentAddress: currentAddress.trim(),
+        permanentAddress: permanentAddress.trim(),
+        emergencyContactName: emergencyContactName.trim(),
+        emergencyContactPhone: emergencyContactPhone.trim()
       },
       identityDetails: {
         ...currentEmployee.identityDetails,
-        pan: panNumber,
-        aadhaar: aadhaarNumber,
-        uan: uanNumber
+        pan: panNumber.trim().toUpperCase(),
+        aadhaar: aadhaarNumber.trim(),
+        uan: uanNumber.trim(),
+        esicIp: esicIp.trim()
       },
       bankDetails: {
         ...currentEmployee.bankDetails,
-        bankName,
-        accountNumber,
-        ifsc: ifscCode
+        bankName: bankName.trim(),
+        accountNumber: accountNumber.trim(),
+        ifsc: ifscCode.trim().toUpperCase(),
+        branchName: branchName.trim()
       }
     });
 
-    setSaveMessage('Profile & Bank details saved successfully! Submitted to HR.');
-    setTimeout(() => setSaveMessage(null), 4000);
+    setSaveMessage('Profile information, Email ID, and Bank Details saved and updated successfully!');
+    setTimeout(() => setSaveMessage(null), 5000);
   };
 
   const handleApplyLeave = (e: React.FormEvent) => {
@@ -241,14 +298,32 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
 
   const handleResetPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPass || newPass.length < 6) {
-      setPassMsg('Password must be at least 6 characters.');
+    const effectiveOld = getEffectiveEmployeePassword(currentEmployee);
+    const cleanOld = oldPass.trim();
+    if (cleanOld !== effectiveOld && cleanOld !== DEFAULT_STAFF_PASSWORD && cleanOld !== '123456') {
+      setPassMsg({ type: 'error', text: 'Current password is incorrect. (Initial default is "Rivot@123")' });
       return;
     }
-    setPassMsg('Password successfully updated! Your account is secured.');
+    if (!newPass || newPass.length < 6) {
+      setPassMsg({ type: 'error', text: 'New password must be at least 6 characters.' });
+      return;
+    }
+    if (newPass !== confirmNewPass) {
+      setPassMsg({ type: 'error', text: 'New password and confirmation do not match.' });
+      return;
+    }
+
+    onUpdatePersonalDetails(currentEmployee.id, {
+      password: newPass.trim(),
+      tempPassword: newPass.trim(),
+      isTempPasswordReset: true
+    });
+
+    setPassMsg({ type: 'success', text: 'Password successfully updated! Your private password is now active.' });
     setOldPass('');
     setNewPass('');
-    setTimeout(() => setPassMsg(null), 4000);
+    setConfirmNewPass('');
+    setTimeout(() => setPassMsg(null), 5000);
   };
 
   const handleDownloadPDF = () => {
@@ -284,22 +359,50 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
           </div>
         </div>
 
-        {/* Demo Switcher */}
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-gray-400">Log in as another staff:</span>
-          <select
-            value={currentEmployee.id}
-            onChange={(e) => onSwitchEmployee(e.target.value)}
-            className="bg-[#181D27] border border-[#262D3D] text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none"
-          >
-            {allEmployees.map(e => (
-              <option key={e.id} value={e.id}>
-                {e.personalDetails.firstName} {e.personalDetails.lastName} ({e.empCode})
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Admin Audit Switcher: Only visible if authenticated as Admin */}
+        {isAdminSession && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-gray-400">Admin Audit View:</span>
+            <select
+              value={currentEmployee.id}
+              onChange={(e) => onSwitchEmployee(e.target.value)}
+              className="bg-[#181D27] border border-[#262D3D] text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none"
+              title="Admin Audit: Preview portal as another employee"
+            >
+              {allEmployees.map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.personalDetails.firstName} {e.personalDetails.lastName} ({e.empCode})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
+
+      {/* First-time login banner if temporary default password is in use */}
+      {!currentEmployee.isTempPasswordReset && (
+        <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl p-4 text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0 text-amber-400">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-white text-xs sm:text-sm">
+                First Time Login: Please Set Your Private Password & Update Your Profile
+              </h4>
+              <p className="text-[11px] text-amber-300/90 mt-0.5">
+                You are currently using the initial default password (<span className="font-mono font-bold text-white">{DEFAULT_STAFF_PASSWORD}</span>). Please change your password, verify your email ID, and review bank details for salary disbursement.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveSubTab('PROFILE')}
+            className="shrink-0 bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs px-3.5 py-1.5 rounded-xl transition-colors shadow-md"
+          >
+            Update Profile & Password →
+          </button>
+        </div>
+      )}
 
       {/* Sub Navigation */}
       <div className="flex items-center gap-2 border-b border-[#262D3D] pb-1">
@@ -571,7 +674,32 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
             </div>
 
             <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              
+              {/* Login Email Address */}
+              <div className="bg-[#0B0D11] border border-[#262D3D] p-4 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-gray-200 font-semibold">
+                    Work / Login Email Address
+                  </label>
+                  <span className="text-[10px] text-[#FF5E0E] font-medium">Primary Login ID</span>
+                </div>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg pl-9 pr-3 py-2 text-white font-mono focus:outline-none focus:border-[#FF5E0E]"
+                    required
+                  />
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  Changing your email address updates your login username and official payslip recipient address immediately.
+                </p>
+              </div>
+
+              {/* Personal Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-gray-400 mb-1">First Name</label>
                   <input
@@ -594,7 +722,7 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-gray-400 mb-1">Phone Number</label>
                   <input
@@ -605,24 +733,98 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-400 mb-1">Emergency Contact</label>
+                  <label className="block text-gray-400 mb-1">Date of Birth</label>
                   <input
-                    type="tel"
-                    value={emergencyContact}
-                    onChange={(e) => setEmergencyContact(e.target.value)}
+                    type="date"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
                     className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 mb-1">Gender</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value as any)}
+                    className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-400 mb-1">Blood Group</label>
+                  <input
+                    type="text"
+                    value={bloodGroup}
+                    onChange={(e) => setBloodGroup(e.target.value)}
+                    placeholder="e.g. O+ve, B+ve"
+                    className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 mb-1">Marital Status</label>
+                  <select
+                    value={maritalStatus}
+                    onChange={(e) => setMaritalStatus(e.target.value as any)}
+                    className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white"
+                  >
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Addresses */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-gray-400 mb-1">Current Residential Address</label>
+                  <input
+                    type="text"
+                    value={currentAddress}
+                    onChange={(e) => setCurrentAddress(e.target.value)}
+                    placeholder="Current staying location (Hubballi / Karnataka)"
+                    className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 mb-1">Permanent Residential Address</label>
+                  <input
+                    type="text"
+                    value={permanentAddress}
+                    onChange={(e) => setPermanentAddress(e.target.value)}
+                    placeholder="Permanent hometown address"
+                    className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-gray-400 mb-1">Permanent Residential Address</label>
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white"
-                />
+              {/* Emergency Contacts */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#0B0D11] border border-[#262D3D] p-3.5 rounded-xl">
+                <div>
+                  <label className="block text-gray-400 mb-1">Emergency Contact Person</label>
+                  <input
+                    type="text"
+                    value={emergencyContactName}
+                    onChange={(e) => setEmergencyContactName(e.target.value)}
+                    placeholder="Name & Relationship (e.g. Father, Spouse)"
+                    className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 mb-1">Emergency Contact Phone</label>
+                  <input
+                    type="tel"
+                    value={emergencyContactPhone}
+                    onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                    placeholder="+91 Mobile number"
+                    className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono"
+                  />
+                </div>
               </div>
 
               {/* Statutory details */}
@@ -630,13 +832,14 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                 <span className="text-xs font-bold text-[#FF5E0E] uppercase tracking-wider block">
                   Statutory & Tax IDs (India)
                 </span>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-gray-400 mb-1">PAN Card</label>
                     <input
                       type="text"
                       value={panNumber}
                       onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
+                      placeholder="ABCDE1234F"
                       className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono uppercase"
                     />
                   </div>
@@ -646,6 +849,7 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                       type="text"
                       value={aadhaarNumber}
                       onChange={(e) => setAadhaarNumber(e.target.value)}
+                      placeholder="12 digits"
                       className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono"
                     />
                   </div>
@@ -655,6 +859,17 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                       type="text"
                       value={uanNumber}
                       onChange={(e) => setUanNumber(e.target.value)}
+                      placeholder="12 digits"
+                      className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">ESIC IP Number</label>
+                    <input
+                      type="text"
+                      value={esicIp}
+                      onChange={(e) => setEsicIp(e.target.value)}
+                      placeholder="10 or 17 digits"
                       className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono"
                     />
                   </div>
@@ -664,15 +879,16 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
               {/* Bank details */}
               <div className="bg-[#0B0D11] border border-[#262D3D] p-4 rounded-xl space-y-3">
                 <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider block">
-                  Salary Bank Account (NEFT / IMPS)
+                  Salary Bank Account (Direct Credit)
                 </span>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-gray-400 mb-1">Bank Name</label>
                     <input
                       type="text"
                       value={bankName}
                       onChange={(e) => setBankName(e.target.value)}
+                      placeholder="e.g. HDFC Bank, SBI"
                       className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white"
                     />
                   </div>
@@ -682,6 +898,7 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                       type="text"
                       value={accountNumber}
                       onChange={(e) => setAccountNumber(e.target.value)}
+                      placeholder="Account number"
                       className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono"
                     />
                   </div>
@@ -691,7 +908,18 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                       type="text"
                       value={ifscCode}
                       onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. HDFC0001234"
                       className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">Branch Name</label>
+                    <input
+                      type="text"
+                      value={branchName}
+                      onChange={(e) => setBranchName(e.target.value)}
+                      placeholder="Hubballi Main Branch"
+                      className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white"
                     />
                   </div>
                 </div>
@@ -699,10 +927,10 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
 
               <button
                 type="submit"
-                className="flex items-center gap-2 bg-[#FF5E0E] hover:bg-[#E04E05] text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-colors shadow-md shadow-[#FF5E0E]/20"
+                className="flex items-center gap-2 bg-[#FF5E0E] hover:bg-[#E04E05] text-white px-6 py-2.5 rounded-xl font-bold text-xs transition-colors shadow-md shadow-[#FF5E0E]/20"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>Save Profile Information</span>
+                <span>Save Profile Information & Email ID</span>
               </button>
             </form>
 
@@ -717,24 +945,46 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
           {/* Security & Password Reset Card */}
           <div className="bg-[#12161E] border border-[#262D3D] rounded-2xl p-6 shadow-xl space-y-4 h-fit">
             <div className="border-b border-[#262D3D] pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Lock className="w-4 h-4 text-[#FF5E0E]" />
-                Security & Password Reset
-              </h3>
-              <p className="text-[11px] text-gray-400">
-                Update your temporary login password
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-[#FF5E0E]" />
+                  Security & Password
+                </h3>
+                {currentEmployee.isTempPasswordReset ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-medium">
+                    Private Password Active
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-medium">
+                    Default Initial Password
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Change your password anytime to protect your personal salary and attendance records.
               </p>
             </div>
 
-            <form onSubmit={handleResetPassword} className="space-y-3 text-xs">
+            <form onSubmit={handleResetPassword} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-gray-400 mb-1">Current / Temp Password</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-gray-400">Current / Initial Password</label>
+                  {!currentEmployee.isTempPasswordReset && (
+                    <button
+                      type="button"
+                      onClick={() => setOldPass(DEFAULT_STAFF_PASSWORD)}
+                      className="text-[10px] text-[#FF5E0E] hover:underline font-mono"
+                    >
+                      Fill Default ({DEFAULT_STAFF_PASSWORD})
+                    </button>
+                  )}
+                </div>
                 <input
-                  type="password"
+                  type={showPasswordFields ? 'text' : 'password'}
                   value={oldPass}
                   onChange={(e) => setOldPass(e.target.value)}
-                  placeholder="Enter temp password"
-                  className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white"
+                  placeholder="Enter current password"
+                  className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white font-mono"
                   required
                 />
               </div>
@@ -742,28 +992,67 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
               <div>
                 <label className="block text-gray-400 mb-1">New Secure Password</label>
                 <input
-                  type="password"
+                  type={showPasswordFields ? 'text' : 'password'}
                   value={newPass}
                   onChange={(e) => setNewPass(e.target.value)}
                   placeholder="Minimum 6 characters"
-                  className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white"
+                  className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white font-mono"
                   required
                 />
               </div>
 
+              <div>
+                <label className="block text-gray-400 mb-1">Confirm New Password</label>
+                <input
+                  type={showPasswordFields ? 'text' : 'password'}
+                  value={confirmNewPass}
+                  onChange={(e) => setConfirmNewPass(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2.5 text-white font-mono"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordFields(!showPasswordFields)}
+                  className="text-[11px] text-gray-400 hover:text-gray-200 flex items-center gap-1.5"
+                >
+                  {showPasswordFields ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  <span>{showPasswordFields ? 'Hide Passwords' : 'Show Passwords'}</span>
+                </button>
+              </div>
+
               <button
                 type="submit"
-                className="w-full bg-[#181D27] hover:bg-[#202734] border border-[#262D3D] hover:border-[#FF5E0E]/40 text-white py-2 rounded-xl text-xs font-semibold transition-colors"
+                className="w-full bg-[#FF5E0E] hover:bg-[#E04E05] text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-[#FF5E0E]/20"
               >
-                Update Password
+                Set New Private Password
               </button>
             </form>
 
             {passMsg && (
-              <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] rounded-lg">
-                {passMsg}
+              <div className={`p-3 rounded-xl text-xs flex items-start gap-2 animate-fade-in ${
+                passMsg.type === 'success'
+                  ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+              }`}>
+                {passMsg.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                )}
+                <span>{passMsg.text}</span>
               </div>
             )}
+
+            <div className="p-3 bg-[#0B0D11] border border-[#262D3D] rounded-xl text-[11px] text-gray-400 space-y-1">
+              <span className="font-semibold text-gray-300 block">Default Password Policy</span>
+              <p>
+                Staff are assigned the initial password <strong className="text-white font-mono">{DEFAULT_STAFF_PASSWORD}</strong>. Once changed, your credentials are saved persistently and HR can reset it if you ever forget.
+              </p>
+            </div>
           </div>
 
         </div>

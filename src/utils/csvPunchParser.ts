@@ -302,6 +302,16 @@ export function processMonthlyAttendance(
   const allRecords: DailyAttendanceRecord[] = [];
 
   for (const emp of employees) {
+    // Exclude resigned or exited employees from monthly attendance processing
+    if (emp.status === 'RESIGNED' || emp.status === 'EXITED') {
+      if (emp.employmentDetails?.lastWorkingDate) {
+        const lwdMonth = emp.employmentDetails.lastWorkingDate.substring(0, 7);
+        if (lwdMonth < month) continue;
+      } else {
+        continue;
+      }
+    }
+
     const isSenior = isEmployeeSeniorExempt(emp.employmentDetails?.dateOfJoining, `${month}-15`);
     const empRecordsForMonth: DailyAttendanceRecord[] = [];
 

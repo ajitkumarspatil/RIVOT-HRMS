@@ -166,11 +166,12 @@ export const PayrollAdjustmentsManager: React.FC<PayrollAdjustmentsManagerProps>
               <label className="block text-gray-400 mb-1">Amount (INR)</label>
               <input
                 type="number"
-                step="100"
-                min="1"
-                value={amount}
+                step="any"
+                min="0"
+                value={amount === 0 ? '' : amount}
                 onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono text-sm font-bold"
+                placeholder="e.g. 1000"
+                className="w-full bg-[#181D27] border border-[#262D3D] rounded-lg p-2 text-white font-mono text-sm font-bold placeholder-gray-500"
                 required
               />
             </div>
